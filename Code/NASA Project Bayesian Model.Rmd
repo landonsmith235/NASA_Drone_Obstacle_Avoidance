@@ -1,0 +1,150 @@
+---
+title: 'NASA Project: Bayesian Regression Model for Drone Obstacle Avoidance'
+author: "Landon Smith"
+date: "2023-03-11"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+While the advent of autonomous drone delivery services may seem inevitable when evaluating the pace at which funding is pouring into the development of drone technology, there are still major technological hurdles that need to be conquered to bring automated drone flight mainstream. Among these hurdles, ensuring that a drone can protect the payload it is carrying as well as its own integrity by effectively evading obstacles is the most crucial to solve. In an attempt to reduce the likelihood of drone aviation accidents, NASA’s Resilient Autonomy team worked alongside the DoD and FAA to create a drone obstacle avoidance system called the Expandable Variable Autonomy Architecture, or EVAA. Unfortunately, the occurrence of the Covid-19 pandemic led to the inability of the team to complete flight tests that utilized the technology and caused the project to be discontinued. For the sake of continuity, this project seeks to pick up where NASA’s Resilient Autonomy team left off and create a drone obstacle avoidance database that can be communally utilized by proprietary flight path planning algorithms to enhance aviation safety. 
+  
+The point cloud data utilized in this project is sourced from overlapping LIDAR scans of a sample plot of land located in Emeryville, California with the following geographical bounding box: 
+  
+minX, minY	(-13614349.164060349, 4557303.475503025)
+maxX, maxY	(-13613408.779604943, 4558076.336715533)
+
+The selected plot of land captures many distinct topographic features such as buildings, vegetation, as well as the San Francisco Bay. The three LIDAR datasets used for cross-validation were all obtained on the OpenTopography website, a website which facilitates access to “high-resolution, Earth science-oriented topography data and related tools and resources.” The dataset's were titled as follows:
+
+CA AlamedaCo 2 2021
+USGS LPC CA NoCAL Wildfires B5b 2018
+ARRA-CA SanFranCoast 2010
+
+Through implementing a Bayesian Regression Model on cross-validated, overlapping LIDAR point cloud data, we can construct a probabilistic determination of whether or not an obstacle exists in a specific location rather than a simplistic binary assumption. This can be done by first creating a "cell" for every potential geographical location an obstacle could be situated. The sizing of these cells would change based off of the desired accuracy of the prediction model. For example, we could allow the the size of the cells to be relatively large in rural areas where obstacles are extremely sparse, but constrict the size of the cells in urban areas where the risk of an obstacle collision is much higher due to the higher density of obstacles. We will let each cell be represented by a normal probability distribution, where the mean is the height of the obstacle, and the standard deviation of the distribution is our confidence about he height of the obstacle. The use of Bayesian Regression Analysis to generate this probability distribution allows path planning algorithms to utilize much more information than a binary representation of obstacles would enable. For example, instead of only being able to ask whether or not there is an obstacle present in a certain location at a height of 10 feet, we can ask what the probability is that there is an obstacle in that certain location at a height of ten feet. This probabilistic dimension of the data enables path planning algorithms to adjust their flight paths more precisely to the needs of the mission by evaluating the cumulative likelihood of success of each potential flight path. For example, if the drone operator wishes to adopt a conservative approach to obstacle avoidance, they will have a lower threshold for the cumulative probability of cell's containing an obstacle. This could result in cells without obstacles in them being avoided, making the desired path a longer distance to traverse but safer. However, if a drone operator decides to utilize a risk-tolerant approach, they will have a higher threshold for the cumulative probability of cell's containing an obstacle. This could cause some obstacles to be overlooked and potentially cause the drone to collide with obstacles on its flight path, but this risk would likely be offset by a decrease in flight duration. The appropriate cumulative probability threshold to go with ultimately depends on the characteristics of the mission.
+
+#Installation of Required Libraries
+```{r}
+library(brms)
+library (ggplot2)
+library(igraph)
+```
+
+# Reads the interpolated LIDAR dataset and assigns the name "map_df" to the dataset
+```{r}
+map_df = read.csv("interpolated.csv")
+```
+
+
+# Gives us summary statisitcs about the dataset before we conduct a Bayesian Regressian Analysis
+```{r}
+summary(map_df)
+str(map_df)
+```
+
+# Create the Bayesian Regressian Model and Check Convergence
+Model Name: "brm_mdl":
+Dependent Variable: height_2021 
+Independent Variables: height_2018 + height_2010
+Summary and Plot Functions: Check if the model has converged 
+```{r}
+brm_mdl = brm(height_2021 ~ height_2018 + height_2010, data = map_df, iter = 2000, warmup = 200, chains = 3, thin = 2 )
+summary(brm_mdl)
+plot(brm_mdl)
+```
+Before evaluating our results, we must ensure that the models assumptions were met. The combination of the Rhat values all being 1 and the fuzzy graphs that we see when inspecting our b_intercept, b_height_2018, b_height_2010, and sigma plots suggests that model successfully converged. Through this Bayesian model, we can see that the height values captured by the 2018 LIDAR scan are far better at predicting the 2021 heights than the 2010 data is. 
+
+# Definition of variables that hold dataset row count, column count, obstacle height threshold, and acceptable probability
+```{r}
+data_row_n = nrow(map_df)
+data_col_n = ncol(map_df)
+
+obstacle_height = 10
+
+acceptable_prob = 0.20
+```
+  
+In this cell, we define the number of rows and number of columns that are found in the dataset. The obstacle height threshold defines any cell with a height of over the selected threshold as an obstacle for the drone. The acceptable probability variable creates a threshold for the probability that there is an obstacle of the certain height situated in the cell. A value of 0.95 here would mean that if there is a 95% chance there is an obstacle 10 units tall, then we should count it as an obstacle.
+
+# Calculates the posterior distribution of the brm_mdl and assigns it to the variable 'post' using the posterior_samples function
+```{r}
+post= posterior_samples(brm_mdl)
+```
+
+
+# Probability Distribution of Height For Each Cell
+```{r}
+map_df$obstacle <- NA
+
+for (ii in 1:data_row_n){
+    post_height_sq <- post$b_Intercept + 
+    post$b_height_2018 * map_df$height_2018[ii] +
+    post$b_height_2010 * map_df$height_2010[ii]
+
+height_prob_sq = length(post_height_sq[post_height_sq > obstacle_height])/length(post_height_sq)
+
+  if (height_prob_sq > acceptable_prob ){ 
+    map_df$obstacle[ii] = 1
+  } else {
+    map_df$obstacle[ii] = 0
+    }
+    
+}
+
+sum(map_df$obstacle)
+```
+
+For each cell on the map, we now calculate the posterior probability of its height. Now that we have the posterior distribution of 2021 heights for each square available, we can calculate the probability of a cell's height exceeding our defined obstacle_height. This is the same as computing the likelihood of an obstacle being present the cell. Next, we must check if the probability of an obstacle being present in the cell is more than the acceptable probability that we defined earlier. If the height probability ends up being greater than the acceptable probably, it will be defined as an obstacle, denoted by 1. The inverse will occur if the opposite is true. The chunk also returns the amount of obstacles we have at the given thresholds.
+
+# 2021 LIDAR Scan: Graph of Height Values
+```{r}
+ggplot( data = map_df,mapping = aes(x=longitude, y=latitude,color = height_2021 )) + geom_point(aes(color = height_2021,size = 1))
+```
+
+This graph shows us a visualization of the height values recorded by our 2021 LIDAR scan. The legend indicates that the elevation of more lightly colored areas is higher than that of lower colored areas.
+
+# 2021 LIDAR Scan: Graph of Obstacles at Specified Height and Acceptable Probability Thresholds
+```{r}
+ggplot( data = map_df,mapping = aes(x=longitude, y=latitude,color = obstacle ))+geom_point(aes(color = obstacle,size = 1))
+```
+
+This graph shows us a visualization of the 0 and 1 values that were computed two chunks ago. A light blue color indicates that there is an obstacle in that area as determined by our obstacle probability and acceptable probability thresholds. In this case, those thresholds were set to 10 units and 99% respectively.
+
+```{r}
+obstacles = map_df[which(map_df$obstacle == 0),]
+obstacles
+
+map_df[which(map_df$height_2010 == 657.5),]
+```
+
+```{r}
+library('RPostgreSQL')
+
+pg = dbDriver("PostgreSQL")
+
+con = dbConnect(pg, "Database Information")
+
+```
+
+```{r}
+dbSendQuery(con, "CREATE TABLE bounding_box(id SERIAL, x_min DOUBLE PRECISION, y_min DOUBLE PRECISION, x_max DOUBLE PRECISION, y_max DOUBLE PRECISION, obstacle_threshold DOUBLE PRECISION, probability_threshold DOUBLE PRECISION, PRIMARY KEY(id, x_min, y_min, x_max, y_max, obstacle_threshold, probability_threshold));")
+
+dbSendQuery(con, "INSERT INTO bounding_box VALUES (1, 561604, 4188653, 562352, 4189266, 10, 0.20);")
+
+dbWriteTable(con,'bounding_box_data',map_df, row.names=FALSE)
+
+dbSendQuery(con, "ALTER TABLE bounding_box_data ADD COLUMN bounding_box_id;")
+
+dbSendQuery(con, "UPDATE bounding_box_data SET bounding_box_id = 1;")
+```
+
+```{r}
+dbWriteTable(con,'bounding_box_data',map_df, row.names=FALSE)
+```
+
+# Conclusion
+Through the implementation of a Bayesian Regression Model on cross-validated, overlapping LIDAR point cloud data, this project has shown the benefits of utilizing a probabilistic approach in drone obstacle detection and avoidance. However, there are some limitations to the approach that was taken in this report as well. When the raw point cloud data was extracted from the .ply files to create a dataset containing the height values for each cell in the years 2021, 2018 and 2010 respectively, instances of null values were plentiful. To remedy this, an interpolation technique was used to impute values into the dataset based on neighboring values. While this removed the null values, imputing values risks corrupting the underlying data. Another limitation that presents itself is the scalability of the model itself. This model was run on a plot of land that was 749 by 614 meters, an extremely small scale application of Bayesian Regression. In order to apply this model to the entire continental United States, we would need magnitudes more computing power. The concept of cross-validation using LIDAR heights from multiple years is also in jeopardy when applied to a scale as large as the continental United States. There simply may not be enough overlapping LIDAR data in certain remote parts of the country to use cross-validation in combination with a Bayesian Regression model for an obstacle detection use case. Despite the current limitations, future work can still be done to move the project further towards our goal of creating a communal store of quality data able to be utilized for aviation safety. Another possible approach is to create Bayesian priors for each individual cells probability distribution by creating a "confidence score" through a similar type of cross-validation. The creation of a drone obstacle avoidance database that can be communally utilized by proprietary flight path planning algorithms to enhance aviation safety should be the focus of anyone looking to help this emerging technology reach maturation. 

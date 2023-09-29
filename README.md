@@ -3,6 +3,22 @@
 ## **Overview**
 While the advent of autonomous drone delivery services may seem inevitable when evaluating the pace at which funding is pouring into the development of drone technology, there are still major technological hurdles that need to be conquered to bring automated drone flight mainstream. Among these hurdles, ensuring that a drone can protect the payload it is carrying as well as its own integrity by effectively evading obstacles is the most crucial to solve. In an attempt to reduce the likelihood of drone aviation accidents, NASA’s Resilient Autonomy team worked alongside the DoD and FAA to create a drone obstacle avoidance system called the Expandable Variable Autonomy Architecture, or EVAA. Unfortunately, the occurrence of the Covid-19 pandemic led to the inability of the team to complete flight tests that utilized the technology and caused the project to be discontinued. For the sake of continuity, this project seeks to pick up where NASA’s Resilient Autonomy team left off and create a drone obstacle avoidance database that can be communally utilized by proprietary flight path planning algorithms to enhance aviation safety.
 
+## **Technologies Utilized**
+Python Libraries
+* pandasql
+* pandas
+* math
+
+RStudio Libraries
+* brms
+* ggplot2
+* igraph
+* RPostgreSQL
+
+Google Cloud SQL Database
+OpenTopography 
+CloudCompare
+
 ## **Relevant Repository Contents & Descriptions**
 ### **NASA Presentation 3-15-2023.pptx**
 This file is a Microsoft PowerPoint presentation that was given to two representatives from NASA as well as Saint Mary's College of CA faculty. The presentation provides an overview of the methodologies utilized throughout the project. 

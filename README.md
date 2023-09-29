@@ -17,9 +17,9 @@ RStudio Libraries
 
 Google Cloud SQL Database
 
-OpenTopography 
+[OpenTopography](https://opentopography.org/)
 
-CloudCompare
+[CloudCompare](https://www.danielgm.net/cc/)
 
 
 ## **Relevant Repository Contents & Descriptions**
